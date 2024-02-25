@@ -7,3 +7,5 @@
 **/tmp/
 /thirdparty
 .DS_store
+tmp
+9cc

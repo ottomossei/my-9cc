@@ -7,7 +7,7 @@
 - [目次](#目次)
 - [Step1 (Cとそれに対応するアセンブラ)](#step1-cとそれに対応するアセンブラ)
 - [Step2 (電卓レベルの言語の作成)](#step2-電卓レベルの言語の作成)
-  - [整数1つをコンパイル](#整数1つをコンパイル)
+	- [整数1つをコンパイル](#整数1つをコンパイル)
 
 
 # Step1 (Cとそれに対応するアセンブラ)
@@ -92,3 +92,43 @@ main:
  - x86-64の整数演算命令(add)は通常2つのレジスタしか受け取らないため、第1引数のレジスタの値を上書きする形で結果が保存される
  - retはスタックからアドレスを1つポップし、そのアドレスにジャンプする
 
+
+# Step2 (電卓レベルの言語の作成)
+
+## 整数1つをコンパイル
+```c
+.intel_syntax noprefix
+.globl main
+
+main:
+        mov rax, 42
+        ret
+```
+step-by-stepで、最小構成で標準入力の値からアセンブリを出力させる。
+  
+```c
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(int argc, char **argv) {
+  if (argc != 2) {
+    fprintf(stderr, "引数の数が正しくありません\n");
+    return 1;
+  }
+
+  printf(".intel_syntax noprefix\n");
+  printf(".globl main\n");
+  printf("main:\n");
+  printf("  mov rax, %d\n", atoi(argv[1]));
+  printf("  ret\n");
+  return 0;
+}
+```
+アセンブルと実行  
+```bash
+cc -o 9cc 9cc.c
+./9cc 42 > tmp.s
+cc -o tmp tmp.s
+./tmp
+echo $? #42
+```
