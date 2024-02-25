@@ -2,7 +2,8 @@
 **/\#*
 **/*.o
 **/*.s
+!**/step*/*.s
 **/a.out
-/tmp*
+**/tmp/
 /thirdparty
-/my-9cc
+.DS_store
