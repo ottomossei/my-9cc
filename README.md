@@ -9,6 +9,7 @@
 	- [Step1 (Cとそれに対応するアセンブラ)](#step1-cとそれに対応するアセンブラ)
 - [電卓レベルの言語の作成](#電卓レベルの言語の作成)
 	- [Step2 (整数1個をコンパイルする言語の作成)](#step2-整数1個をコンパイルする言語の作成)
+	- [Step2 (加減算のできるコンパイラの作成)](#step2-加減算のできるコンパイラの作成)
 
 # 機械語とアセンブラ
 ## Step1 (Cとそれに対応するアセンブラ)
@@ -132,4 +133,58 @@ cc -o 9cc 9cc.c
 cc -o tmp tmp.s
 ./tmp
 echo $? #42
+```
+
+## Step2 (加減算のできるコンパイラの作成)
+ - addとsubが加算と減算
+```c
+.intel_syntax noprefix
+.globl main
+
+main:
+        mov rax, 5
+        add rax, 20
+        sub rax, 4
+        ret
+```
+
+加算/減算の式を言語として説明すると、  
+1. 最初に数字   
+2. 0以上の項（＋もしくはーの後ろに文字がある）  
+
+となる。  
+これには、項を解析する関数として`strtol`が適切である。  
+strtol関数は、文字列を長整数（long int）に変換する。  
+数値を含む文字列とその文字列内での数値の解析を開始するポインタ、数値の解析を終了させるポインタのアドレス、および基数を引数に取る。
+```c
+char *p = argv[1];  
+
+printf(".intel_syntax noprefix\n");
+printf(".globl main\n");
+printf("main:\n");
+printf("  mov rax, %ld\n", strtol(p, &p, 10));
+
+// 文字列を1文字ずつ走査し、+や-に遭遇するたびに、
+// それに続く数値をraxに加算または減算
+while (*p) { // デリファレンスにより実際の文字を捜査
+	if (*p == '+') {
+		p++;  // charサイズ分移動し、次の文字へ
+		// &pは、strtol関数が数値の解析を終了した後の位置を示すポインタを
+		// 格納するための変数のアドレスを指す
+		// 例えば123+456であればstrtolは123を返し、pは第二引数により「+」を指す
+		printf("  add rax, %ld\n", strtol(p, &p, 10));
+		continue;
+	}
+
+	if (*p == '-') {
+		p++;
+		printf("  sub rax, %ld\n", strtol(p, &p, 10));
+		continue;
+	}
+
+	fprintf(stderr, "予期しない文字です: '%c'\n", *p);
+	return 1;
+}
+
+printf("  ret\n");
 ```
