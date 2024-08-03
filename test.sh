@@ -3,7 +3,7 @@ assert() {
   expected="$1"
   input="$2"
 
-  ./9cc "$input" > tmp.s
+  ./9cc "$input" >tmp.s
   cc -o tmp tmp.s
   ./tmp
   actual="$?"
@@ -20,5 +20,7 @@ assert 0 0
 assert 42 42
 assert 21 "5+20-4"
 assert 41 " 12 + 34 - 5 "
+# エラーメッセージの確認
+# assert 13 " 12++"
 
 echo OK
