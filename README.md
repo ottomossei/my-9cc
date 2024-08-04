@@ -11,7 +11,12 @@
   - [Step1 (整数1個をコンパイルする言語の作成)](#step1-整数1個をコンパイルする言語の作成)
   - [Step2 (加減算のできるコンパイラの作成)](#step2-加減算のできるコンパイラの作成)
   - [Step3 (トークナイザを導入)](#step3-トークナイザを導入)
-  - [エラーメッセージを改良](#エラーメッセージを改良)
+    - [エラーメッセージを改良](#エラーメッセージを改良)
+  - [Step4 再帰下降構文解析とスタックマシンの実装](#step4-再帰下降構文解析とスタックマシンの実装)
+    - [抽象構文木(AST: Abstract Syntax Tree )](#抽象構文木ast-abstract-syntax-tree-)
+    - [生成規則（Production Rule）](#生成規則production-rule)
+    - [バックナウアー・ナウア形式(BNF : Backus–Naur form)](#バックナウアーナウア形式bnf--backusnaur-form)
+    - [拡張バックナウアー・ナウア形式(EBNF : Extended BNF)](#拡張バックナウアーナウア形式ebnf--extended-bnf)
 
 # 機械語とアセンブラ
 ## Step0 (Cとそれに対応するアセンブラ)
@@ -200,145 +205,8 @@ tokenの間にある空白文字は、tokenを区切るために存在してい�
 またtoken列の各tokenを分類して型をつけることができる利点もある。   
 単なる文字列に分割するだけではなく、各tokenを解釈することで、token列を消費するときに考えなければならないことが減る。   
 (現時点では+,-,数字の型がアセンブラとしてある。)  
-```c
-// トークンの種類
-typedef enum {
-  TK_RESERVED,  // 記号
-  TK_NUM,       // 整数トークン
-  TK_EOF,       // 入力の終わりを表すトークン
-} TokenKind;
 
-typedef struct Token Token;
-
-// トークン型
-struct Token {
-  TokenKind kind;  // トークンの型
-  Token *next;     // 次の入力トークン
-  int val;         // kindがTK_NUMの場合、その数値
-  char *str;       // トークン文字列
-};
-
-// 現在着目しているトークン
-Token *token;
-
-// エラーを報告するための関数
-// printfと同じ引数を取る
-void error(char *fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  fprintf(stderr, "\n");
-  exit(1);
-}
-
-// 次のトークンが期待している記号のときには、トークンを1つ読み進めて
-// 真を返す。それ以外の場合には偽を返す。
-bool consume(char op) {
-  if (token->kind != TK_RESERVED || token->str[0] != op) return false;
-  token = token->next;
-  return true;
-}
-
-// 次のトークンが期待している記号のときには、トークンを1つ読み進める。
-// それ以外の場合にはエラーを報告する。
-void expect(char op) {
-  if (token->kind != TK_RESERVED || token->str[0] != op)
-    error("'%c'ではありません", op);
-  token = token->next;
-}
-
-// 次のトークンが数値の場合、トークンを1つ読み進めてその数値を返す。
-// それ以外の場合にはエラーを報告する。
-int expect_number() {
-  if (token->kind != TK_NUM) error("数ではありません");
-  int val = token->val;
-  token = token->next;
-  return val;
-}
-
-bool at_eof() { return token->kind == TK_EOF; }
-
-// 新しいトークンを作成してcurに繋げる
-Token *new_token(TokenKind kind, Token *cur, char *str) {
-  Token *tok = calloc(1, sizeof(Token));
-  tok->kind = kind;
-  tok->str = str;
-  cur->next = tok;
-  return tok;
-}
-
-// 入力文字列pをトークナイズしてそれを返す
-Token *tokenize(char *p) {
-  Token head;  // 先頭のToken
-  head.next = NULL;
-  Token *cur = &head;  // CurrentのToken
-
-  while (*p) {
-    // 空白文字をスキップ
-    if (isspace(*p)) {
-      p++;
-      continue;
-    }
-
-    // +や-があれば、それを記号(TK_RESERVED)とする
-    if (*p == '+' || *p == '-') {
-      // 第三引数のポストインクリメントの詳細
-      // new_tokenの中ではpとなり、
-      // 関数コールが終了後にpのポインタがインクリメントする。
-      cur = new_token(TK_RESERVED, cur, p++);
-      continue;
-    }
-
-    // 数字があれば、それを記号(TK_NUM)とする
-    if (isdigit(*p)) {
-      cur = new_token(TK_NUM, cur, p);
-      cur->val = strtol(p, &p, 10);
-      continue;
-    }
-
-    error("トークナイズできません");
-  }
-
-  new_token(TK_EOF, cur, p);
-  return head.next;
-}
-
-int main(int argc, char **argv) {
-  if (argc != 2) {
-    error("引数の個数が正しくありません");
-    return 1;
-  }
-
-  // トークナイズする
-  token = tokenize(argv[1]);
-
-  // アセンブリの前半部分を出力
-  printf(".intel_syntax noprefix\n");
-  printf(".globl main\n");
-  printf("main:\n");
-
-  // 式の最初は数でなければならないので、それをチェックして
-  // 最初のmov命令を出力
-  printf("  mov rax, %d\n", expect_number());
-
-  // `+ <数>`あるいは`- <数>`というトークンの並びを消費しつつ
-  // アセンブリを出力
-  while (!at_eof()) {
-    if (consume('+')) {
-      printf("  add rax, %d\n", expect_number());
-      continue;
-    }
-
-    expect('-');
-    printf("  sub rax, %d\n", expect_number());
-  }
-
-  printf("  ret\n");
-  return 0;
-}
-```
-
-## エラーメッセージを改良
+### エラーメッセージを改良
 エラー時に、その場所がわかるように補足する。
 ```sh
 $ ./9cc "1+3++" > tmp.s
@@ -348,4 +216,64 @@ $ ./9cc "1+3++" > tmp.s
 $ ./9cc "1 + foo + 5" > tmp.s
 1 + foo + 5
     ^ トークナイズできません
+```
+
+## Step4 再帰下降構文解析とスタックマシンの実装
+乗除算や優先順位のカッコ、すなわち*、/、()を言語に追加したい。  
+しかし、これには掛け算や割り算は式の中で最初に計算しなければいけないというルールがある。  
+どの演算子が最初に演算されるのかというルールを「演算子の優先順位」（operator precedence）といい、  
+今までのようにトークンを前から処理するだけでは実現できない。  
+(再帰下降構文解析を実施する必要がある（後述）)  
+コンパイラは、まず構文解析を行って入力のトークン列を抽象構文木に変換し、その構文木を次はアセンブリに変換する。  
+### 抽象構文木(AST: Abstract Syntax Tree )
+構文解析におけるゴールは抽象構文木を構築することだ。  
+下記の画像のようなグループ化のためのカッコなどの冗長な要素を木の中に残さずになるべくコンパクトに表現した構文木のことを抽象構文木（abstract syntax tree、AST）という。  
+![result](./static/image/4_abstract_syntax_tree.png)  
+![result](./static/image/4_abstract_syntax_tree_japanese.png)
+
+### 生成規則（Production Rule）  
+生成規則とは、言語の文法を定義する一連のルールであり、これに従って有効なプログラムを生成する。  
+これらの規則は形式言語理論に基づいており、通常、バックナウアー・ナウア形式（BNF）または拡張バックナウアー・ナウア形式（EBNF）で記述される。  
+
+
+| 用語                               | 定義                                                       |
+| ---------------------------------- | ---------------------------------------------------------- |
+| 非終端記号（Non-terminal symbols） | 他のルールに展開される記号                                 |
+| 終端記号（Terminal symbols）       | 実際のプログラムコードの要素で、これ以上展開されない記号   |
+| 開始記号（Start symbol）           | 文法生成の出発点となる非終端記号                           |
+| 生成規則（Production rules）       | 非終端記号を終端記号や他の非終端記号に変換するためのルール |
+
+---
+
+### バックナウアー・ナウア形式(BNF : Backus–Naur form)
+
+例：
+
+```
+A ::= B
+B ::= "fizz" | "buzz" | B C
+C ::= "fizz" | "buzz"
+
+fizz
+fizzbuzz
+buzzfizz
+...
+```
+
+### 拡張バックナウアー・ナウア形式(EBNF : Extended BNF)
+
+EBNFはBNFの拡張であり、より簡潔に文法を表現でき、下記のルールが追加されている。
+
+| 書き方  | 意味                 |
+| ------- | -------------------- |
+| A\*     | Aの0回以上の繰り返し |
+| A?      | Aまたはε             |
+| A \| B  | AまたはB             |
+| ( ... ) | グループ化           |
+
+
+例：
+
+```
+A = ("fizz" | "buzz")*
 ```
