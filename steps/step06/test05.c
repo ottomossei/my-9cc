@@ -182,24 +182,15 @@ Node *expr() {
   }
 }
 
-// unary = ("+" | "-")? unary | primary
-Node *unary() {
-  if (consume('+'))
-    return unary();
-  if (consume('-'))
-    return new_binary(ND_SUB, new_num(0), unary());
-  return primary();
-}
-
-// mul = unary ("*" unary | "/" unary)*
+// mul = primary ("*" primary | "/" primary)*
 Node *mul() {
-  Node *node = unary();
+  Node *node = primary();
 
   for (;;) {
     if (consume('*'))
-      node = new_binary(ND_MUL, node, unary());
+      node = new_binary(ND_MUL, node, primary());
     else if (consume('/'))
-      node = new_binary(ND_DIV, node, unary());
+      node = new_binary(ND_DIV, node, primary());
     else
       return node;
   }

@@ -24,6 +24,7 @@
   - [レジスタマシンとスタックマシン](#レジスタマシンとスタックマシン)
   - [x86-64におけるスタックマシンの実現方法](#x86-64におけるスタックマシンの実現方法)
 - [Step5 四則演算のできる言語の作成](#step5-四則演算のできる言語の作成)
+- [Step6 単項プラスと単項マイナス](#step6-単項プラスと単項マイナス)
 
 # Step0 Cとそれに対応するアセンブラ
 機械語とほぼ1対1で人間にとって読みやすい言語  
@@ -462,4 +463,36 @@ push rax
 # Step5 四則演算のできる言語の作成
 下記に実装  
 [step05](./steps/step05/test05.c)
+
+# Step6 単項プラスと単項マイナス
+5-3のように2つの項をとる演算子を2項演算子(binary operator)と呼び、逆に+3のように1つの項だけをとる演算子を単独演算子(unary operator)と呼ぶ。  
+C言語では+-や&*などの単項演算子が存在するが、このステップでは+-だけを実装する。  
+
+ここで+-は、単項と2項という、似て異なる定義の同名の演算子が複数存在していると考え、生成規則にunaryを追加する。  
+```
+## 前章
+expr    = mul ("+" mul | "-" mul)*
+mul     = primary ("*" primary | "/" primary)*
+primary = num | "(" expr ")"
+
+## unary追加後
+expr    = mul ("+" mul | "-" mul)*
+mul     = unary ("*" unary | "/" unary)*
+unary   = ("+" | "-")? primary ## +-が0以上1未満で、その後にprimaryが続く
+primary = num | "(" expr ")"
+```
+
+ここで新しい生成規則のunaryを下記のように追加実装する
+```c
+Node *unary() {
+  if (consume('+'))
+    return primary();
+  if (consume('-'))
+    return new_node(ND_SUB, new_node_num(0), primary());
+  return primary();
+}
+```
+下記に実装  
+[step06](./steps/step06/test06.c)
+
 
