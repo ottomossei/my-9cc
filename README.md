@@ -25,6 +25,10 @@
   - [x86-64におけるスタックマシンの実現方法](#x86-64におけるスタックマシンの実現方法)
 - [Step5 四則演算のできる言語の作成](#step5-四則演算のできる言語の作成)
 - [Step6 単項プラスと単項マイナス](#step6-単項プラスと単項マイナス)
+- [Step7 比較演算子](#step7-比較演算子)
+  - [字句解析の変更](#字句解析の変更)
+  - [構文解析の変更](#構文解析の変更)
+  - [比較の命令コード](#比較の命令コード)
 
 # Step0 Cとそれに対応するアセンブラ
 機械語とほぼ1対1で人間にとって読みやすい言語  
@@ -494,5 +498,82 @@ Node *unary() {
 ```
 下記に実装  
 [step06](./steps/step06/test06.c)
+
+# Step7 比較演算子
+2項演算子である<,<=,>,>=,==,!=を実装する。  
+## 字句解析の変更
+まず初めに、今までのTokenizerの長さは1で固定であるため、それらを一般化する。
+```c
+struct Token {
+  TokenKind kind; // トークンの型
+  Token *next;    // 次の入力トークン
+  int val;        // kindがTK_NUMの場合、その数値
+  char *str;      // トークン文字列
+  int len;        // トークンの長さを追加
+};
+```
+
+加えて、consumeやexpectも変更する。
+```c
+bool consume(char op) {
+  if (token->kind != TK_RESERVED || token->str[0] != op) return false;
+  token = token->next;
+  return true;
+}
+
+
+bool consume(char *op) {
+  if (token->kind != TK_RESERVED ||
+      strlen(op) != token->len ||
+      memcmp(token->str, op, token->len))
+    return false;
+  token = token->next;
+  return true;
+}
+```
+
+## 構文解析の変更
+比較演算子を加えた文法の優先順位(降順)は下記と鳴る
+```
+== !=            equality
+< <= > >=        relational
++ -              add
+* /              mul
+単項+ 単項-       unary
+()               primary
+```
+これに沿って、EBNF生成規則を書き換える。
+```
+## 前章
+expr    = mul ("+" mul | "-" mul)*
+mul     = unary ("*" unary | "/" unary)*
+unary   = ("+" | "-")? primary
+primary = num | "(" expr ")"
+
+## 変更後
+expr       = equality
+equality   = relational ("==" relational | "!=" relational)*
+relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+add        = mul ("+" mul | "-" mul)*
+mul        = unary ("*" unary | "/" unary)*
+unary      = ("+" | "-")? primary
+primary    = num | "(" expr ")"
+```
+
+## 比較の命令コード
+x86-64で比較は`cmp命令`を利用し、主に下記のように利用する。  
+```assembly
+pop rdi            // スタックから値をPOPしてRDIレジスタに格納
+pop rax            // スタックから値をPOPしてRAXレジスタに格納
+cmp rax, rdi       // RAXとRDIの値を比較し、結果をフラグレジスタに格納
+sete al            // 比較結果が等しい場合、ALレジスタに1をセット（ゼロフラグがセットされている場合）、そうでなければ0をセット
+movzx rax, al      // alの8ビットの値を64ビットのRAXレジスタにゼロ拡張してコピー
+```
+sete命令は「Set if Equal」の略で、直前の比較（cmp命令を含む）の結果を基に、指定した8ビットレジスタに0または1をセットする。  
+なお、alレジスタとは、RAXレジスタの下位8ビットを指す。  
+movzx命令は「Move with Zero Extend」の略で、指定された小さなレジスタ（この場合は8ビットのal）をゼロ拡張して、より大きなレジスタ（この場合は64ビットのrax）にコピーする。　　
+
+下記に実装  
+[step06](./steps/step07/test07.c)
 
 
