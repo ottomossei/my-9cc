@@ -74,14 +74,14 @@ main:
 gccやobjdumpはデフォルトではAT&T記法でアセンブリを出力する。  
 どちらの記法を使っても、生成される機械語命令列は同一となる。
 ```assembly
-mov rbp, rsp   // Intel
-mov %rsp, %rbp // AT&T
+mov rbp, rsp                  ; Intel
+mov %rsp, %rbp                ; AT&T
 
-mov rax, 8     // Intel
-mov $8, %rax   // AT&T
+mov rax, 8                    ; Intel
+mov $8, %rax                  ; AT&T
 
-mov [rbp + rcx * 4 - 8], rax // Intel
-mov %rax, -8(rbp, rcx, 4)    // AT&T
+mov [rbp + rcx * 4 - 8], rax  ; Intel
+mov %rax, -8(rbp, rcx, 4)     ; AT&T
 ```
 関数呼び出しの場合は下記
 ```c
@@ -455,16 +455,16 @@ MUL
 
 具体例として、1+2をx86-64をスタックマシンと見立ててコンパイルする
 ```assembly
-// 左辺と右辺をプッシュ
+; 左辺と右辺をプッシュ
 push 1
 push 2
 
-// 左辺と右辺をRAXとRDIにポップして足す
-pop rdi // スタックから2がポップされ、RDIレジスタに格納される
-pop rax // スタックから1がポップされ、RDIレジスタに格納される
-add rax, rdi // RAXレジスタにRDIレジスタの値を加算し、結果の3をRAXレジスタに格納
+; 左辺と右辺をRAXとRDIにポップして足す
+pop rdi ; スタックから2がポップされ、RDIレジスタに格納される
+pop rax ; スタックから1がポップされ、RDIレジスタに格納される
+add rax, rdi ; RAXレジスタにRDIレジスタの値を加算し、結果の3をRAXレジスタに格納
 
-// 足した結果をスタックにプッシュ
+; 足した結果をスタックにプッシュ
 push rax
 ```
 
@@ -567,11 +567,11 @@ primary    = num | "(" expr ")"
 ## 比較の命令コード
 x86-64で比較は`cmp命令`を利用し、主に下記のように利用する。  
 ```assembly
-pop rdi            // スタックから値をPOPしてRDIレジスタに格納
-pop rax            // スタックから値をPOPしてRAXレジスタに格納
-cmp rax, rdi       // RAXとRDIの値を比較し、結果をフラグレジスタに格納
-sete al            // 比較結果が等しい場合、ALレジスタに1をセット（ゼロフラグがセットされている場合）、そうでなければ0をセット
-movzx rax, al      // alの8ビットの値を64ビットのRAXレジスタにゼロ拡張してコピー
+pop rdi            ; スタックから値をPOPしてRDIレジスタに格納
+pop rax            ; スタックから値をPOPしてRAXレジスタに格納
+cmp rax, rdi       ; RAXとRDIの値を比較し、結果をフラグレジスタに格納
+sete al            ; 比較結果が等しい場合、ALレジスタに1をセット（ゼロフラグがセットされている場合）、そうでなければ0をセット
+movzx rax, al      ; alの8ビットの値を64ビットのRAXレジスタにゼロ拡張してコピー
 ```
 sete命令は「Set if Equal」の略で、直前の比較（cmp命令を含む）の結果を基に、指定した8ビットレジスタに0または1をセットする。  
 なお、alレジスタとは、RAXレジスタの下位8ビットを指す。  
@@ -595,9 +595,40 @@ movzx命令は「Move with Zero Extend」の略で、指定された小さなレ
 上記の図のように、RBPレジスタを利用することで、aにはRBP-8, bにはRBP-16というアドレスで常にアクセスすることができる。  
 
 ## アセンブリ
+コンパイラが関数の先頭に出力する定型の命令のことを`プロローグ`（prologue）という。
+下記に関数gが関数fを呼び出した直後のプロローグの例を示す
 ```assembly
-push rbp
-mov rbp, rsp
-sub rsp, 16
+; gのリターンアドレス
+; gの呼び出し時点のRBP (RBP)
+; x
+; y
+; fのリターンアドレス(RSP)
+
+push rbp  ; ベースレジスタをスタックにプッシュ
+; gのリターンアドレス
+; gの呼び出し時点のRBP (RBP)
+; x
+; y
+; fのリターンアドレス
+; fのベースアドレス(RSP)
+
+mov rbp, rsp ; RBPをRSPに移動
+; gのリターンアドレス
+; gの呼び出し時点のRBP
+; x
+; y
+; fのリターンアドレス
+; fのベースアドレス(RSP, RBP)
+
+sub rsp, 16 ; 変数の総サイズ分だけRSPを移動
+; gのリターンアドレス
+; gの呼び出し時点のRBP
+; x
+; y
+; fのリターンアドレス
+; fのベースアドレス(RBP)
+; a
+; b(RSP)
+
 ```
 
