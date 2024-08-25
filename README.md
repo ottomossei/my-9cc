@@ -1,6 +1,7 @@
 # 参考
  - [低レイヤを知りたい人のためのCコンパイラ作成入門](https://www.sigbus.info/compilerbook)のノート  
  - [chibicc](https://github.com/rui314/chibicc/)
+ - [セルフホストできるCコンパイラを作ってみた](https://qiita.com/pocari/items/d272e87274a1486298bc)  
 
 # 目次
 - [参考](#参考)
@@ -35,6 +36,8 @@
   - [アセンブリ](#アセンブリ)
     - [プロローグ（prologue）](#プロローグprologue)
     - [エピローグ（epilogue）](#エピローグepilogue)
+  - [字句解析の変更](#字句解析の変更-1)
+  - [構文解析の変更](#構文解析の変更-1)
 
 # Step0 Cとそれに対応するアセンブラ
 機械語とほぼ1対1で人間にとって読みやすい言語  
@@ -671,4 +674,142 @@ ret ; retはcall命令でスタックに積まれたリターンアドレスを�
 ; gの呼び出し時点のRBP
 ; x
 ; y(RSP)
+```
+
+## 字句解析の変更
+まずはスモールステップとして、小文字1文字の変数ができるように既存のコンパイラを改良する。  
+アルファベットの小文字であれば、TK_IDENT型のトークンを作成するように変更する。  
+```c
+enum {
+  TK_RESERVED, // 記号
+  TK_IDENT,    // 新しく識別子を追加
+  TK_NUM,      // 整数トークン
+  TK_EOF,      // 入力の終わりを表すトークン
+} TokenKind;
+...
+if ('a' <= *p && *p <= 'z') {
+  cur = new_token(TK_IDENT, cur, p++);
+  cur->len = 1;
+  continue;
+}
+```
+
+## 構文解析の変更
+新しく、`program`と`stmt`と`assign`を生成規則に追加した。  
+1. program  
+programは、コンパイラが処理する全体の構造を表す。  
+stmt*として定義されているように、programは複数のstmtから成り立ち、プログラム全体を表すためのトップレベルのルールとして定義されている。  
+これにより、1つまたは複数の文（stmt）が順番に実行されることを示す。  
+
+2. stmt(statement)  
+stmtは、プログラム内で実行される1つの文を表す。  
+stmtは、expr（式）に続いてセミコロン（;）が来る形で定義する。  
+この構文により、各式が文として扱われ、その文がプログラムの中で実行されることを示す。  
+セミコロンは文の終わりを明示するためのもので、複数の文を連続して書くことが可能となる。  
+
+3. assign  
+assignは、代入文を表す。  
+equality（等式）の後に等号（=）が続き、さらに別のassignが続く可能性を示しており、これによって、a = b = c;のような連鎖的な代入をサポートすることが可能となる。  
+代入文は、等式の評価とその結果を変数に代入する操作を含む。
+
+
+```
+## 前章
+expr       = equality
+equality   = relational ("==" relational | "!=" relational)*
+relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+add        = mul ("+" mul | "-" mul)*
+mul        = unary ("*" unary | "/" unary)*
+unary      = ("+" | "-")? primary
+primary    = num | "(" expr ")"
+
+## 変更後
+program    = stmt*
+stmt       = expr ";"
+expr       = assign
+assign     = equality ("=" assign)?
+equality   = relational ("==" relational | "!=" relational)*
+relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+add        = mul ("+" mul | "-" mul)*
+mul        = unary ("*" unary | "/" unary)*
+unary      = ("+" | "-")? primary
+primary    = num | ident | "(" expr ")"
+```
+
+この段階ではa+1=5のような式もパースが可能だが、それは正しい動作である。  
+そのような意味的に不正な式の排除は次のパスで実施する。  
+パーサを改造することについては、今までと同様に文法要素をそのまま関数呼び出しにマップしていけば良い。  
+セミコロン区切りで複数の式をかけるようにしたため、パースの結果として複数のノードをどこかに保存する必要が生じる。  
+暫定実装として、グローバルな配列を用意し、そこにパース結果のノードを順にストアすることにする。  
+```c
+Node *code[100]; // パースの結果を保持する
+
+Node *assign() {
+  Node *node = equality();
+  if (consume("="))
+    node = new_node(ND_ASSIGN, node, assign());
+  return node;
+}
+
+Node *expr() {
+  return assign();
+}
+
+Node *stmt() {
+  Node *node = expr();
+  expect(";");
+  return node;
+}
+
+void program() {
+  int i = 0;
+  while (!at_eof())
+    code[i++] = stmt();
+  code[i] = NULL;
+}
+```
+
+抽象構文木では新たに「ローカル変数を表すノード」を表現できる必要がある。  
+そのために、ローカル変数の新しい型と、ノードに新しいメンバーを追加する。  
+このデータ構造では、パーサは識別子トークンに対してND_LVAR型のノードを作成して返すこととなる。  
+```c
+typedef enum {
+  ND_ADD,    // +
+  ND_SUB,    // -
+  ND_MUL,    // *
+  ND_DIV,    // /
+  ND_ASSIGN, // =
+  ND_LVAR,   // ローカル変数を新規追加
+  ND_NUM,    // 整数
+} NodeKind;
+
+typedef struct Node Node;
+
+// 抽象構文木のノード
+struct Node {
+  NodeKind kind; // ノードの型
+  Node *lhs;     // 左辺
+  Node *rhs;     // 右辺
+  int val;       // kindがND_NUMの場合のみ使う
+
+  // kindがND_LVARの場合のみ利用、新規追加
+  int offset;    // ローカル変数のベースポインタからのオフセットを表す
+};
+```
+現状では、変数aはRBP-8、bはRBP-16⋯⋯というように、ローカル変数は名前で決まる固定の位置にあるため、offsetは構文解析の段階で決めることができる。
+```c
+Node *primary() {
+  ...
+  
+  // 識別子を読み込んでND_LVAR型のノードを返す
+  Token *tok = consume_ident();
+  if (tok) {
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_LVAR;
+    node->offset = (tok->str[0] - 'a' + 1) * 8;
+    return node;
+  }
+
+  ...
+}
 ```
